@@ -24,4 +24,8 @@ A rougelike adventure game based on a [pen and paper adventure](https://www.yout
 
 Once Nim is installed, navigate to the `src/` folder using a terminal or command line tool like `cmd` or `powershell` in Windows. Execute the following command:
 
-`nim c -d:release --app:gui main.nim`
+```
+\src> nim c -d:release --app:gui main.nim
+```
+
+If it compiled successfully, the `main.exe` was created within the `src/` folder. Double click on the executable and the game will start!

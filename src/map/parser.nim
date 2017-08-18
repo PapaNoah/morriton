@@ -1,4 +1,4 @@
-import xmlparser, xmltree, strutils, streams
+import xmlparser, xmltree, strutils, streams, parsecsv
 
 type
     XMLParseError =  object of Exception
@@ -38,6 +38,22 @@ type
         renderOrder: RenderOrder
         layers: seq[string]
 
+proc parseLayerData(map: var TmxMap, tree: XmlNode) =
+    for layerNode in tree.findAll("layer"):
+        let data = layerNode.child("data")
+        if data.isNil:
+            raise XMLParseError.newException("Layer without data tag: layer name is '%s'" % layerNode.tag)
+        map.layers.add(layerNode.attr("name"))
+        let dataStream = newStringStream(data.text)
+
+        var csvParser: CsvParser
+        csvParser.open(dataStream, data.text)
+        while csvParser.readRow():
+            for tileId in items(csvParser.row):
+                
+
+        
+
 proc newTmxMap(xmlMap: XmlNode): TmxMap =
     new result
     result.version = xmlMap.attr("version")
@@ -56,7 +72,7 @@ proc newTmxMap(xmlMap: XmlNode): TmxMap =
     for layerNr in 0..maxLayers:
         for mapWidth in 0..maxWidth:
             for mapHeight in 0..maxHeight:
-                result.data[layerNr][mapWidth][mapHeight] = 4097;
+                result.data[layerNr][mapWidth][mapHeight] = 0;
     result.layers = @[]
 
 template echoLine(line: string) =
