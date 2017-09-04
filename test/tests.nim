@@ -1,4 +1,4 @@
-import basic2d, math, times, random, sdl2, xmlparser, xmltree, strtabs, strutils, sdl2.image
+import basic2d, math, times, random, sdl2, xmlparser, xmltree, strtabs, strutils, sdl2.image, base64
 
 let tilesPerRow = 57
 let tileSize = (x:16, y:16)
@@ -79,24 +79,36 @@ proc parseTmxMap(path: string, renderer: RendererPtr) =
             map.layers[LayerEnum.HIGH] = highArray
         else:
             break
-            
-    
 
-    
+proc decodeBase64(filename: string) =
+    var tree = loadXml(filename)
+    var layer = tree.child("layer")
+    var data = layer.child("data")
+    echo data.innerText.len
+    var decoded: string = decode(data.innerText)
+    var decodedData: seq[uint] = @[]
+    for str in countup(0, len(decoded)-3, 4):
+        var result = cast[uint](decoded[str])
+        result = result or cast[uint](decoded[str+1]) shl 8
+        result = result or cast[uint](decoded[str+2]) shl 16
+        result = result or cast[uint](decoded[str+3]) shl 24
+        decodedData.add(result)
+    echo decodedData
 
 
-# Initialization
-const max = 1000
-const N = 10000000
-var input: seq[int] = newSeq[int](N)
+# # Initialization
+# const max = 1000
+# const N = 10000000
+# var input: seq[int] = newSeq[int](N)
 
-for i in 0..N-1:
-    input[i] = random(max)
+# for i in 0..N-1:
+#     input[i] = random(max)
 
-var t = cpuTime()
-arraySolution(input)
-echo "Time arraySolution: ", cpuTime() - t
+# var t = cpuTime()
+# arraySolution(input)
+# echo "Time arraySolution: ", cpuTime() - t
 
-t = cpuTime()
-calcSolution(input)
-echo "Time calcSolution: ", cpuTime() - t
+# t = cpuTime()
+# calcSolution(input)
+# echo "Time calcSolution: ", cpuTime() - t
+decodeBase64("../default.tmx")

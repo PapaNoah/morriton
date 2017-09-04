@@ -1,9 +1,12 @@
-import xmlparser, xmltree, strutils, streams, parsecsv
+import xmlparser, xmltree, strutils, streams, parsecsv, base64, strtabs
+from zip.zlib import uncompress, ZStreamHeader
 
 type
     XMLParseError =  object of Exception
     TmxMapDimensionError = object of Exception
     TmxMapLayerSizeError = object of Exception
+    CompressionNotImplementedError = object of Exception
+    TmxMissingGidInTileError = object of Exception
 
 type
     Format* {.pure.} = enum XML
@@ -20,7 +23,6 @@ const
     maxWidth = 1024
     maxHeight = 1024
     maxLayers = 64
-        
 type
     Parser* = ref object of RootObj
         format: Format
@@ -37,19 +39,75 @@ type
         orientation: Orientation
         renderOrder: RenderOrder
         layers: seq[string]
+    
+
+proc decompressBase64(compressed: string, compression: Compression): string =
+    case compression:
+        of Compression.GZIP:
+            return uncompress(compressed, stream = ZStreamHeader.GZIP_STREAM)
+        of Compression.ZLIB:
+            return uncompress(compressed, stream = ZStreamHeader.ZLIB_STREAM)
+        of Compression.NONE:
+            return compressed
+        else:
+            raise CompressionNotImplementedError.newException("No behavior for compression implemented: %s" % $compression)
+
+proc readBase64(dataNode: XmlNode): seq[uint] =
+    result = @[]
+    var base64Decompressed: string = dataNode.innerText
+    if dataNode.attrs.hasKey("compression"):
+        let compression = parseEnum[Compression](dataNode.attr("compression"))
+        base64Decompressed = decompressBase64(dataNode.innerText, compression)
+    let base64Decoded: string = decode(base64Decompressed)
+    for byteIndex in countup(0, len(base64Decoded) - 3, 4):
+        var tileId = cast[uint](base64Decoded[byteIndex])
+        tileId = tileId or cast[uint](base64Decoded[byteIndex + 1])
+        tileId = tileId or cast[uint](base64Decoded[byteIndex + 2])
+        tileId = tileId or cast[uint](base64Decoded[byteIndex + 3])
+        result.add(tileId)
+
+proc readCSV(dataNode: XmlNode, filename: string): seq[uint] =
+    result = @[]
+    var
+        csvParser: CsvParser
+        stringStream = newStringStream(dataNode.innerText)
+    csvParser.open(stringStream, filename)
+    while csvParser.readRow():
+        for tileId in items(csvParser.row):
+            result.add(parseUInt(tileId))
+    csvParser.close()
+
+proc readXML(dataNode: XmlNode): seq[uint] =
+    result = @[]
+    for tileNode in dataNode.findAll("tile"):
+        if not tileNode.attrs.hasKey("gid"):
+            raise TmxMissingGidInTileError.newException("No 'gid' attribute found for tile.")
+        result.add(parseUint(tileNode.attr("gid")))
 
 proc parseLayerData(map: var TmxMap, tree: XmlNode) =
+    var layerId = 0
     for layerNode in tree.findAll("layer"):
         let data = layerNode.child("data")
         if data.isNil:
             raise XMLParseError.newException("Layer without data tag: layer name is '%s'" % layerNode.tag)
         map.layers.add(layerNode.attr("name"))
-        let dataStream = newStringStream(data.text)
-
-        var csvParser: CsvParser
-        csvParser.open(dataStream, data.text)
-        while csvParser.readRow():
-            for tileId in items(csvParser.row):
+        var gidSequence: seq[uint]
+        var encoding: Encoding
+        var compression: Compression
+        if not data.attrs.hasKey("encoding"):
+            encoding = Encoding.NONE
+        else:
+            encoding = parseEnum[Encoding](data.attr("encoding"))
+        case encoding:
+            of Encoding.NONE:
+                gidSequence = readXML(data)
+            of Encoding.CSV:
+                gidSequence = readCSV(data, data.tag)
+            of Encoding.BASE64:
+                gidSequence = readBase64(data)
+            else:
+                raise XMLParseError.newException("Data encoding not recognized: %s" % data.attr("encoding"))
+        inc(layerId)
                 
 
         
