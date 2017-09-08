@@ -7,9 +7,10 @@ A rougelike adventure game based on a [pen and paper adventure](https://www.yout
 * SDL2 development binaries - [https://wiki.libsdl.org/Installation](https://wiki.libsdl.org/Installation)
 * Git - [https://git-scm.com/downloads](https://git-scm.com/downloads)
 * Mercurial (for nim package _strfmt_) - [https://www.mercurial-scm.org/downloads](https://www.mercurial-scm.org/downloads)
-* Extra Nim packages (install using **nimble**)
-  * sdl2 (**git** needed)
-  * strfmt (**mercurial** needed)
+* Extra Nim packages (install using `nimble install`)
+  * `sdl2` (**git**)
+  * `strfmt` (**mercurial**)
+  * `zip` (**git**)
 * Tiled (map creator) - [http://www.mapeditor.org/](http://www.mapeditor.org/)
 
 ## Documentation (Third Party)

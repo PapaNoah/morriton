@@ -1,4 +1,4 @@
-import xmlparser, xmltree, strutils, streams, parsecsv, base64, strtabs
+import xmlparser, xmltree, strutils, streams, parsecsv, base64, strtabs, tables, colors
 from zip.zlib import uncompress, ZStreamHeader
 
 type
@@ -23,6 +23,45 @@ const
     maxWidth = 1024
     maxHeight = 1024
     maxLayers = 64
+
+type
+    MapMatrix = array[0..maxWidth, array[0..maxHeight, uint]]
+
+    MapObject = ref object of RootObj
+    GeneralObject = ref object of MapObject
+        id: uint
+        name: string
+        objType: string
+        x: uint
+        y: uint
+        width: int
+        height: int
+        rotation: float
+        gid: uint
+        visible: bool
+        tid: uint
+    ObjectGroup = ref object of RootObj
+        name: string
+        objects: seq[MapObject]
+        color: Color
+        opacity: bool
+        visible: bool
+        offsetx: float
+        offsety: float
+        drawOrder: DrawOrder
+    ObjectText = ref object of MapObject
+        fontfamily: string
+        pixelsize: uint
+        wrap: bool
+        color: Color
+        bold: bool
+        italic: bool
+        underline: bool
+        strikeout: bool
+        kerning: bool
+        halign: TextAlign
+        valign: TextAlign
+
 type
     Parser* = ref object of RootObj
         format: Format
@@ -33,7 +72,8 @@ type
     Map = ref object of RootObj
         width, height: uint
         tileWidth, tileHeight: uint
-        data: array[0..maxLayers, array[0..maxWidth, array[0..maxHeight, uint]]]
+        data: TableRef[string, MapMatrix]
+        objectGroups: TableRef[string, ObjectGroup]
     TmxMap = ref object of Map
         version: string
         orientation: Orientation
@@ -61,9 +101,9 @@ proc readBase64(dataNode: XmlNode): seq[uint] =
     let base64Decoded: string = decode(base64Decompressed)
     for byteIndex in countup(0, len(base64Decoded) - 3, 4):
         var tileId = cast[uint](base64Decoded[byteIndex])
-        tileId = tileId or cast[uint](base64Decoded[byteIndex + 1])
-        tileId = tileId or cast[uint](base64Decoded[byteIndex + 2])
-        tileId = tileId or cast[uint](base64Decoded[byteIndex + 3])
+        tileId = tileId or cast[uint](base64Decoded[byteIndex + 1]) shl 8
+        tileId = tileId or cast[uint](base64Decoded[byteIndex + 2]) shl 16
+        tileId = tileId or cast[uint](base64Decoded[byteIndex + 3]) shl 24
         result.add(tileId)
 
 proc readCSV(dataNode: XmlNode, filename: string): seq[uint] =
@@ -84,16 +124,30 @@ proc readXML(dataNode: XmlNode): seq[uint] =
             raise TmxMissingGidInTileError.newException("No 'gid' attribute found for tile.")
         result.add(parseUint(tileNode.attr("gid")))
 
+proc fillLayerData(map: var TmxMap, layer: string, gidSequence: seq[uint]) =
+    var
+        width: int = 0
+        height: int = 0
+        gidIndex: int = 0
+        layerData = map.data[layer]
+    while height.uint < map.height:
+        while width.uint < map.width:
+            layerData[width][height] = gidSequence[gidIndex]
+            inc(gidIndex)
+        width = 0
+
+proc initMapMatrix(): MapMatrix =
+    return result
+        
 proc parseLayerData(map: var TmxMap, tree: XmlNode) =
-    var layerId = 0
     for layerNode in tree.findAll("layer"):
         let data = layerNode.child("data")
         if data.isNil:
             raise XMLParseError.newException("Layer without data tag: layer name is '%s'" % layerNode.tag)
-        map.layers.add(layerNode.attr("name"))
+        let layerName = layerNode.attr("name")
+        map.data[layerName] = initMapMatrix()
         var gidSequence: seq[uint]
         var encoding: Encoding
-        var compression: Compression
         if not data.attrs.hasKey("encoding"):
             encoding = Encoding.NONE
         else:
@@ -107,10 +161,41 @@ proc parseLayerData(map: var TmxMap, tree: XmlNode) =
                 gidSequence = readBase64(data)
             else:
                 raise XMLParseError.newException("Data encoding not recognized: %s" % data.attr("encoding"))
-        inc(layerId)
-                
+        map.fillLayerData(layerName, gidSequence)
 
-        
+proc newGeneralObject(objectNode: XmlNode): GeneralObject =
+    new result
+    template attributes: untyped = objectNode.attrs
+    result.id = parseUInt(attributes["id"])
+    result.name = attributes.getOrDefault("name", "")
+    result.objType = attributes.getOrDefault("type", "")
+    result.x = parseUInt(attributes["x"])
+    result.y = parseUInt(attributes["y"])
+    result.width = parseInt(attributes.getOrDefault("width", "0"))
+    result.height = parseInt(attributes.getOrDefault("height", "0"))
+    result.rotation = parseFloat(attributes.getOrDefault("rotation", "0.0"))
+    result.gid = parseUInt(attributes.getOrDefault("gid", "0"))
+    result.visible = parseBool(attributes.getOrDefault("visible", "true"))
+    result.tid = parseUInt(attributes.getOrDefault("tid", "0"))
+
+proc newObjectGroup(groupNode: XmlNode): ObjectGroup =
+    new result
+    template attributes: untyped = groupNode.attrs
+    result.name = attributes.getOrDefault("name", "")
+    result.opacity = parseBool(attributes.getOrDefault("opacity", "true"))
+    result.visible = parseBool(attributes.getOrDefault("visible", "true"))
+    result.offsetx = parseFloat(attributes.getOrDefault("offsetx", "0.0"))
+    result.offsety = parseFloat(attributes.getOrDefault("offsety", "0.0"))
+    result.drawOrder = parseEnum[DrawOrder](attributes.getOrDefault("draworder", $DrawOrder.TOPDOWN))
+    result.objects = newSeq[MapObject]()
+    for objects in groupNode.findAll("object"):
+        result.objects.add(newGeneralObject(objects))
+    
+
+proc parseObjectGroups(map: TmxMap, tree: XmlNode) =
+    for objectGroupNode in tree.findAll("objectgroup"):
+        let name = if objectGroupNode.attrs.hasKey("name"): objectGroupNode.attrs["name"] else: ""
+        var objectGroup: ObjectGroup = newObjectGroup(objectGroupNode)
 
 proc newTmxMap(xmlMap: XmlNode): TmxMap =
     new result
@@ -126,12 +211,9 @@ proc newTmxMap(xmlMap: XmlNode): TmxMap =
     let layerLength = len(xmlMap.findAll("layer"))
     if layerLength > maxLayers:
         raise TmxMapLayerSizeError.newException("Too many layers. 64 < %s" % $layerLength)
-
-    for layerNr in 0..maxLayers:
-        for mapWidth in 0..maxWidth:
-            for mapHeight in 0..maxHeight:
-                result.data[layerNr][mapWidth][mapHeight] = 0;
-    result.layers = @[]
+    result.data = newTable[string, MapMatrix]()
+    result.parseLayerData(xmlMap)
+    
 
 template echoLine(line: string) =
     echo line & newLine
@@ -151,6 +233,3 @@ proc parseTmxMap(parser: TmxParser, path: string): XmlNode =
     if tree.attr("version") != "1.0": 
         echo "warning: this parser was written for tmx version 1.0. This version is " & tree.attr("version")
     return tree
-
-# var parser = newTmxParser(Encoding.CSV)
-# var tree = parser.parseTmxMap("default.tmx")

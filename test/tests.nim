@@ -1,4 +1,4 @@
-import basic2d, math, times, random, sdl2, xmlparser, xmltree, strtabs, strutils, sdl2.image, base64
+import basic2d, math, times, random, sdl2, xmlparser, xmltree, strtabs, strutils, sdl2.image, base64, tables
 
 let tilesPerRow = 57
 let tileSize = (x:16, y:16)
@@ -22,6 +22,9 @@ proc calcSolution(input: seq[int]) =
         y = (tileNr div tilesPerRow) * (tileSize.y + 1)
 
 type
+    MapMatrix = array[0..10, array[0..10, uint]]
+    TestMap = ref object
+        data: TableRef[string, MapMatrix]
     LayerEnum {.pure.} = enum GROUND, RUG, WALL, DECO, HIGH
     Map = ref object
         textures: seq[TexturePtr]
@@ -95,6 +98,18 @@ proc decodeBase64(filename: string) =
         decodedData.add(result)
     echo decodedData
 
+proc initMapMatrix(): MapMatrix =
+    return result
+    # for w in 0..result.len - 1:
+    #     for h in low(result[w])..high(result[w]):
+    #         result[w][h] = 0
+
+proc `$`(matrix: MapMatrix): string =
+    result = ""
+    for w in low(matrix)..high(matrix):
+        for h in low(matrix[w])..high(matrix[w]):
+            result &= $matrix[w][h] & ","
+
 
 # # Initialization
 # const max = 1000
@@ -111,4 +126,14 @@ proc decodeBase64(filename: string) =
 # t = cpuTime()
 # calcSolution(input)
 # echo "Time calcSolution: ", cpuTime() - t
-decodeBase64("../default.tmx")
+# decodeBase64("../default.tmx")
+var 
+    table = newTable[string, MapMatrix]()
+    matrix: MapMatrix
+    sequence: seq[string]
+
+sequence = newSeq[string]()
+sequence.add("F")
+sequence.add("A")
+sequence.add("B")
+sequence.add("I")
