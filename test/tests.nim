@@ -1,4 +1,5 @@
 import basic2d, math, times, random, sdl2, xmlparser, xmltree, strtabs, strutils, sdl2.image, base64, tables
+import ../src/map/parser
 
 let tilesPerRow = 57
 let tileSize = (x:16, y:16)
@@ -110,30 +111,5 @@ proc `$`(matrix: MapMatrix): string =
         for h in low(matrix[w])..high(matrix[w]):
             result &= $matrix[w][h] & ","
 
-
-# # Initialization
-# const max = 1000
-# const N = 10000000
-# var input: seq[int] = newSeq[int](N)
-
-# for i in 0..N-1:
-#     input[i] = random(max)
-
-# var t = cpuTime()
-# arraySolution(input)
-# echo "Time arraySolution: ", cpuTime() - t
-
-# t = cpuTime()
-# calcSolution(input)
-# echo "Time calcSolution: ", cpuTime() - t
-# decodeBase64("../default.tmx")
-var 
-    table = newTable[string, MapMatrix]()
-    matrix: MapMatrix
-    sequence: seq[string]
-
-sequence = newSeq[string]()
-sequence.add("F")
-sequence.add("A")
-sequence.add("B")
-sequence.add("I")
+var tmxParser: TmxParser = newTmxParser()
+var tmxMap: TmxMap = tmxParser.parseTmxMap("../default.tmx")

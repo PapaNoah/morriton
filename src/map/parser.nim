@@ -67,23 +67,23 @@ type
         format: Format
         log: string
     TmxParser* = ref object of Parser
-        encoding: Encoding
         errors: seq[string]
-    Map = ref object of RootObj
+    Map* = ref object of RootObj
         width, height: uint
         tileWidth, tileHeight: uint
-        data: TableRef[string, MapMatrix]
-        objectGroups: TableRef[string, ObjectGroup]
-    TmxMap = ref object of Map
-        version: string
-        orientation: Orientation
-        renderOrder: RenderOrder
-        layers: seq[string]
+        data*: TableRef[string, MapMatrix]
+        objectGroups*: TableRef[string, ObjectGroup]
+    TmxMap* = ref object of Map
+        version*: string
+        orientation*: Orientation
+        renderOrder*: RenderOrder
+        layers*: seq[string]
     
 
 proc decompressBase64(compressed: string, compression: Compression): string =
     case compression:
         of Compression.GZIP:
+            echo uncompress(compressed, stream = ZStreamHeader.DETECT_STREAM)
             return uncompress(compressed, stream = ZStreamHeader.GZIP_STREAM)
         of Compression.ZLIB:
             return uncompress(compressed, stream = ZStreamHeader.ZLIB_STREAM)
@@ -93,11 +93,14 @@ proc decompressBase64(compressed: string, compression: Compression): string =
             raise CompressionNotImplementedError.newException("No behavior for compression implemented: %s" % $compression)
 
 proc readBase64(dataNode: XmlNode): seq[uint] =
-    result = @[]
+    result = newSeq[uint]()
     var base64Decompressed: string = dataNode.innerText
     if dataNode.attrs.hasKey("compression"):
-        let compression = parseEnum[Compression](dataNode.attr("compression"))
-        base64Decompressed = decompressBase64(dataNode.innerText, compression)
+        # https://github.com/nim-lang/zip/issues/23 temporary solution
+        raise CompressionNotImplementedError.newException("decompression not implemented")
+        # let compression = parseEnum[Compression](dataNode.attr("compression"))
+        # base64Decompressed = decompressBase64(dataNode.innerText, compression)
+        # echo base64Decompressed
     let base64Decoded: string = decode(base64Decompressed)
     for byteIndex in countup(0, len(base64Decoded) - 3, 4):
         var tileId = cast[uint](base64Decoded[byteIndex])
@@ -105,6 +108,7 @@ proc readBase64(dataNode: XmlNode): seq[uint] =
         tileId = tileId or cast[uint](base64Decoded[byteIndex + 2]) shl 16
         tileId = tileId or cast[uint](base64Decoded[byteIndex + 3]) shl 24
         result.add(tileId)
+    echo "finish"
 
 proc readCSV(dataNode: XmlNode, filename: string): seq[uint] =
     result = @[]
@@ -140,12 +144,13 @@ proc initMapMatrix(): MapMatrix =
     return result
         
 proc parseLayerData(map: var TmxMap, tree: XmlNode) =
+    echo "so far so good"
     for layerNode in tree.findAll("layer"):
+        echo "so far so good"
         let data = layerNode.child("data")
         if data.isNil:
             raise XMLParseError.newException("Layer without data tag: layer name is '%s'" % layerNode.tag)
         let layerName = layerNode.attr("name")
-        map.data[layerName] = initMapMatrix()
         var gidSequence: seq[uint]
         var encoding: Encoding
         if not data.attrs.hasKey("encoding"):
@@ -180,7 +185,7 @@ proc newGeneralObject(objectNode: XmlNode): GeneralObject =
 
 proc newObjectGroup(groupNode: XmlNode): ObjectGroup =
     new result
-    template attributes: untyped = groupNode.attrs
+    let attributes = if groupNode.attrs.isNil: newStringTable(modeCaseInsensitive) else: groupNode.attrs
     result.name = attributes.getOrDefault("name", "")
     result.opacity = parseBool(attributes.getOrDefault("opacity", "true"))
     result.visible = parseBool(attributes.getOrDefault("visible", "true"))
@@ -188,14 +193,16 @@ proc newObjectGroup(groupNode: XmlNode): ObjectGroup =
     result.offsety = parseFloat(attributes.getOrDefault("offsety", "0.0"))
     result.drawOrder = parseEnum[DrawOrder](attributes.getOrDefault("draworder", $DrawOrder.TOPDOWN))
     result.objects = newSeq[MapObject]()
-    for objects in groupNode.findAll("object"):
-        result.objects.add(newGeneralObject(objects))
+    for objectNode in groupNode.findAll("object"):
+        result.objects.add(newGeneralObject(objectNode))
+    
     
 
-proc parseObjectGroups(map: TmxMap, tree: XmlNode) =
-    for objectGroupNode in tree.findAll("objectgroup"):
-        let name = if objectGroupNode.attrs.hasKey("name"): objectGroupNode.attrs["name"] else: ""
+proc parseObjectGroups(map: var TmxMap, tree: XmlNode) =
+    for groupIndex, objectGroupNode in tree.findAll("objectgroup"):
+        let name = if not objectGroupNode.attrs.isNil and objectGroupNode.attrs.hasKey("name"): objectGroupNode.attrs["name"] else: $groupIndex
         var objectGroup: ObjectGroup = newObjectGroup(objectGroupNode)
+        map.objectGroups[name] = objectGroup
 
 proc newTmxMap(xmlMap: XmlNode): TmxMap =
     new result
@@ -212,19 +219,18 @@ proc newTmxMap(xmlMap: XmlNode): TmxMap =
     if layerLength > maxLayers:
         raise TmxMapLayerSizeError.newException("Too many layers. 64 < %s" % $layerLength)
     result.data = newTable[string, MapMatrix]()
-    result.parseLayerData(xmlMap)
+    result.objectGroups = newTable[string, ObjectGroup]()
     
 
 template echoLine(line: string) =
     echo line & newLine
 
-proc newTmxParser(encoding: Encoding): TmxParser =
+proc newTmxParser*(): TmxParser =
     new result
     result.format = Format.XML
-    result.encoding = encoding
     result.errors = @[]
 
-proc parseTmxMap(parser: TmxParser, path: string): XmlNode =
+proc parseTmxMap*(parser: TmxParser, path: string): TmxMap =
     var tree = loadXml(path, parser.errors)
     if len(parser.errors) != 0:
         for error in parser.errors:
@@ -232,4 +238,8 @@ proc parseTmxMap(parser: TmxParser, path: string): XmlNode =
         raise XMLParseError.newException("Error while parsing '" & path & "': XML file not well formed")
     if tree.attr("version") != "1.0": 
         echo "warning: this parser was written for tmx version 1.0. This version is " & tree.attr("version")
-    return tree
+    var map: TmxMap = newTmxMap(tree)
+    map.parseObjectGroups(tree)
+    echo "so far so good"
+    map.parseLayerData(tree)
+    return map
