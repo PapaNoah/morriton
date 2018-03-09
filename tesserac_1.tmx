@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.0" tiledversion="1.0.3" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="16" tileheight="16" nextobjectid="15">
- <tileset firstgid="1" source="../morritongodot/img/tileset.tsx"/>
- <tileset firstgid="1768" source="../morritongodot/img/indoor.tsx"/>
+<map version="1.0" tiledversion="1.0.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="16" tileheight="16" nextobjectid="15">
+ <tileset firstgid="1" source="img/tileset.tsx"/>
+ <tileset firstgid="1768" source="img/indoor.tsx"/>
  <layer name="Boden" width="20" height="20">
   <data encoding="csv">
 0,0,0,0,0,0,0,916,916,916,916,916,916,0,0,0,0,0,0,0,

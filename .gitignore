@@ -1,2 +1,11 @@
-nimcache/
-*.exe
+# Everything except the addon itself and doc files
+/*
+/*/
+!/addons/vnen.tiled_importer/
+!README.md
+!LICENSE
+!.gitignore
+!.gitattributes
+# Godot generated files
+/.import/*
+*.import
